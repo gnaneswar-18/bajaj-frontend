@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doctor Listing</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      background-color: #f4f7fa;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 300px;
+      padding: 20px;
+      background: #fff;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .main {
+      flex: 1;
+      padding: 20px;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .doctor-card {
+      display: flex;
+      align-items: center;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background-color: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease;
+    }
+
+    .doctor-card:hover {
+      transform: scale(1.02);
+    }
+
+    .doctor-card img {
+      border-radius: 50%;
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      margin-right: 20px;
+    }
+
+    .doctor-info {
+      flex: 1;
+    }
+
+    .doctor-card h3 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #333;
+    }
+
+    .specialties {
+      font-size: 0.9rem;
+      color: #777;
+    }
+
+    .details {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    .details span {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .button {
+      margin-top: 10px;
+      padding: 8px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .button:hover {
+      background-color: #45a049;
+    }
+
+    .autocomplete {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .suggestions {
+      position: absolute;
+      width: 100%;
+      border: 1px solid #ccc;
+      border-top: none;
+      background: white;
+      max-height: 120px;
+      overflow-y: auto;
+      z-index: 10;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      border-radius: 5px;
+    }
+
+    .suggestion-item {
+      padding: 5px;
+      cursor: pointer;
+    }
+
+    .suggestion-item:hover {
+      background: #f1f1f1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sidebar">
+    <h3>Consultation Mode</h3>
+    <label><input type="radio" name="mode" value="Video Consult"> Video Consult</label><br>
+    <label><input type="radio" name="mode" value="In Clinic"> In Clinic</label>
+
+    <h3>Speciality</h3>
+    <div id="specialty-filters"></div>
+
+    <h3>Sort</h3>
+    <label><input type="radio" name="sort" value="fees"> Fees (Low to High)</label><br>
+    <label><input type="radio" name="sort" value="experience"> Experience (High to Low)</label>
+  </div>
+
+  <div class="main">
+    <div class="autocomplete">
+      <input type="text" id="search" placeholder="Search doctor by name" />
+      <div id="suggestions" class="suggestions"></div>
+    </div>
+    <div id="doctor-list"></div>
+  </div>
+
+  <script>
+    var apiURL = 'https://srijandubey.github.io/campus-api-mock/SRM-C1-25.json';
+    var allDoctors = [], filteredDoctors = [];
+    var searchInput = document.getElementById('search');
+    var suggestionBox = document.getElementById('suggestions');
+    var doctorList = document.getElementById('doctor-list');
+
+    function fetchDoctors() {
+      fetch(apiURL)
+        .then(response => {
+          if (!response.ok) throw new Error('Failed to load doctors: ' + response.status);
+          return response.json();
+        })
+        .then(data => {
+          if (Array.isArray(data)) {
+            allDoctors = data;
+            renderDoctors(allDoctors);
+            generateSpecialtyFilters(allDoctors);
+            applyFiltersFromURL();
+          }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    function generateSpecialtyFilters(doctors) {
+      const specialtySet = new Set();
+      doctors.forEach(d => d.specialities.forEach(sp => specialtySet.add(sp.name)));
+
+      const specialtyFilters = document.getElementById('specialty-filters');
+      specialtyFilters.innerHTML = '';
+      specialtySet.forEach(s => {
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" value="${s}"> ${s}`;
+        specialtyFilters.appendChild(label);
+        specialtyFilters.appendChild(document.createElement('br'));
+      });
+
+      // Add event listeners
+      document.querySelectorAll('#specialty-filters input').forEach(input => {
+        input.addEventListener('change', applyFilters);
+      });
+    }
+
+    function applyFilters() {
+      var result = allDoctors.slice();
+      var searchText = searchInput.value.toLowerCase();
+
+      if (searchText) {
+        result = result.filter(d => d.name.toLowerCase().includes(searchText));
+      }
+
+      var mode = document.querySelector('input[name="mode"]:checked')?.value;
+      if (mode) {
+        result = result.filter(d =>
+          (mode === 'Video Consult' && d.video_consult) ||
+          (mode === 'In Clinic' && d.in_clinic)
+        );
+      }
+
+      var specialties = [];
+      var checkboxes = document.querySelectorAll('#specialty-filters input:checked');
+      checkboxes.forEach(cb => specialties.push(cb.value));
+      if (specialties.length > 0) {
+        result = result.filter(d =>
+          specialties.some(s =>
+            d.specialities.some(sp => sp.name === s)
+          )
+        );
+      }
+
+      var sortBy = document.querySelector('input[name="sort"]:checked')?.value;
+      if (sortBy === 'fees') {
+        result.sort((a, b) =>
+          parseInt(a.fees.replace('₹', '').replace(',', '')) -
+          parseInt(b.fees.replace('₹', '').replace(',', ''))
+        );
+      } else if (sortBy === 'experience') {
+        result.sort((a, b) => parseInt(b.experience) - parseInt(a.experience));
+      }
+
+      renderDoctors(result);
+      updateURLParams();
+    }
+
+    function renderDoctors(doctors) {
+      doctorList.innerHTML = '';
+      if (doctors.length === 0) {
+        doctorList.innerHTML = '<p>No doctors found.</p>';
+      }
+      doctors.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'doctor-card';
+        card.setAttribute('data-testid', 'doctor-card');
+        card.innerHTML = `
+          <img src="${d.photo}" alt="${d.name}" />
+          <div class="doctor-info">
+            <h3 data-testid="doctor-name">${d.name}</h3>
+            <div class="specialties" data-testid="doctor-specialty">
+              Specialties: ${d.specialities.map(sp => sp.name).join(', ')}
+            </div>
+            <div class="details">
+              <span data-testid="doctor-experience">Experience: ${d.experience}</span>
+              <span data-testid="doctor-fee">Fees: ${d.fees}</span>
+              <span>Languages: ${d.languages.join(', ')}</span>
+              <span>Clinic: ${d.clinic.name}</span>
+              <span>Address: ${d.clinic.address.address_line1}, ${d.clinic.address.locality}, ${d.clinic.address.city}</span>
+            </div>
+            <button class="button" data-testid="consult-button">Consult</button>
+          </div>`;
+        doctorList.appendChild(card);
+      });
+    }
+
+    searchInput.addEventListener('input', function () {
+      var val = searchInput.value.toLowerCase();
+      suggestionBox.innerHTML = '';
+      if (val) {
+        var suggestions = allDoctors.filter(doc =>
+          doc.name.toLowerCase().includes(val)
+        ).slice(0, 3);
+        suggestions.forEach(doc => {
+          var div = document.createElement('div');
+          div.textContent = doc.name;
+          div.className = 'suggestion-item';
+          div.setAttribute('data-testid', 'suggestion-item');
+          div.addEventListener('click', function () {
+            searchInput.value = doc.name;
+            suggestionBox.innerHTML = '';
+            applyFilters();
+          });
+          suggestionBox.appendChild(div);
+        });
+      }
+    });
+
+    document.querySelectorAll('input[type="radio"]').forEach(input => {
+      input.addEventListener('change', applyFilters);
+    });
+
+    function updateURLParams() {
+      const params = new URLSearchParams();
+      const search = searchInput.value.trim();
+      if (search) params.set('search', search);
+
+      const mode = document.querySelector('input[name="mode"]:checked')?.value;
+      if (mode) params.set('mode', mode);
+
+      const specialties = Array.from(document.querySelectorAll('#specialty-filters input:checked')).map(cb => cb.value);
+      if (specialties.length) params.set('specialties', specialties.join(','));
+
+      const sort = document.querySelector('input[name="sort"]:checked')?.value;
+      if (sort) params.set('sort', sort);
+
+      history.pushState(null, '', '?' + params.toString());
+    }
+
+    fetchDoctors();
+  </script>
+</body>
+
+</html>
